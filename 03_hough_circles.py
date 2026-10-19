@@ -14,9 +14,9 @@ def find_image(name):
             return path
     raise FileNotFoundError(f'{name}을(를) docs/images 또는 images 폴더에서 찾을 수 없습니다.')
 
-img = cv.imread(find_image('coin.png'))
+img = cv.imread(find_image('coin.jpg'))
 if img is None:
-    raise FileNotFoundError('coin.png를 읽을 수 없습니다.')
+    raise FileNotFoundError('coin.jpg를 읽을 수 없습니다.')
 
 # 해상도에 따라 반지름 값이 달라지므로, 가로 1200px로 줄여서 같은 기준으로 비교
 W = 1200
@@ -25,8 +25,8 @@ img = cv.resize(img, (W, int(img.shape[0] * W / img.shape[1])))
 gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 blur = cv.medianBlur(gray, 5)        # 노이즈 제거 (HoughCircles는 노이즈에 민감)
 
-cv.imwrite(os.path.join(out_dir, '03_original_coin.png'), img)
-cv.imwrite(os.path.join(out_dir, '03_blur_coin.png'), blur)
+cv.imwrite(os.path.join(out_dir, '03_original_coin.jpg'), img)
+cv.imwrite(os.path.join(out_dir, '03_blur_coin.jpg'), blur)
 
 # param1: 내부 Canny의 높은 임계값 (낮은 임계값은 그 절반)
 # param2: 원으로 인정하는 누적 투표 임계값 (낮을수록 많이 검출, 오검출 증가)
@@ -41,7 +41,7 @@ for param2 in [20, 30, 40, 50]:
             cv.circle(result, (int(x), int(y)), int(r), (255, 0, 0), 2)   # 원 (파랑, BGR)
             cv.circle(result, (int(x), int(y)), 2, (0, 0, 255), 3)        # 중심점 (빨강)
         count = circles.shape[1]
-    name = f'03_circles_param2_{param2}_coin.png'
+    name = f'03_circles_param2_{param2}_coin.jpg'
     cv.imwrite(os.path.join(out_dir, name), result)
     print(f'param2={param2}: 원 {count}개 -> {name}')
 

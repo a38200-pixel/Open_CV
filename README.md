@@ -166,3 +166,148 @@ Open_CV/
 ├─ output/            # 실행 결과 저장
 └─ README.md
 ```
+
+---
+---
+
+# Hough Transform — 원과 직선 검출 기초 실습
+
+> OpenCV의 `cv.HoughCircles`와 `cv.HoughLinesP`로 **원(동전)** 과 **직선(건물)** 을 검출하고, 투표 기준값이 **오검출과 놓침**을 어떻게 바꾸는지 측정한 기초 실습입니다. 엣지 검출(Canny) 실습의 다음 단계입니다.
+
+| 항목 | 내용 |
+|---|---|
+| 목적 | 허프 변환 원리 이해, 기준값(`param2`, `threshold`, `minLineLength`)이 결과에 미치는 영향 확인 |
+| 환경 | Python 3.12 · OpenCV (`opencv-python`) · NumPy · VS Code |
+| 입력 | 원: 동전 사진 `docs/images/coin.png` (Pexels 무료 이미지) / 직선: 직접 촬영한 벽돌 건물 사진 `docs/images/structure_1.jpg` |
+| 출력 | `output/` 폴더의 원·직선 검출 결과 이미지 |
+
+---
+
+## 1. 허프 변환이란
+
+영상에서 **직선, 원 같은 도형을 투표 방식으로 찾는 방법**입니다. 엣지 점 하나하나가 "내가 이 도형 위에 있다면 도형의 파라미터는 무엇인가"를 계산해 파라미터 공간에 표를 던지고, **표가 가장 많이 모인 파라미터를 도형으로 인정**합니다.
+
+| 도형 | 파라미터 | 설명 |
+|---|---|---|
+| 직선 | (ρ, θ) 2개 | `ρ = x·cosθ + y·sinθ` 로 표현. 같은 직선 위의 점들은 같은 (ρ, θ)에 투표 |
+| 원 | 중심 (a, b), 반지름 r 3개 | 3차원 투표는 무겁기 때문에 OpenCV의 `HOUGH_GRADIENT`는 엣지의 기울기 방향을 이용해 **중심을 먼저 찾고 반지름을 나중에 정함** |
+
+일부가 가려지거나 끊긴 도형도 나머지 점들의 표만 충분하면 검출할 수 있다는 점이 장점입니다.
+
+## 2. 사용한 함수
+
+| 함수 | 입력 | 핵심 파라미터 |
+|---|---|---|
+| `cv.HoughCircles` | 그레이 영상 (내부에서 Canny 수행) | `param1`: 내부 Canny의 높은 임계값(낮은 값은 그 절반), `param2`: 원으로 인정할 투표 임계값, `minDist`, `minRadius`, `maxRadius` |
+| `cv.HoughLinesP` | **Canny 엣지 맵** | `threshold`: 직선으로 인정할 투표 수, `minLineLength`: 최소 선분 길이, `maxLineGap`: 같은 선으로 잇는 최대 간격 |
+
+(`cv.HoughLines`는 무한 직선의 (ρ, θ)를, `cv.HoughLinesP`는 선분의 양 끝점을 반환합니다.)
+
+## 3. 어디에 활용되는가
+
+- **차선 검출**: Canny + `HoughLinesP`로 도로의 직선 추출
+- **문서 · 건물 외곽 검출**: 긴 직선을 찾아 기울기 보정, 원근 보정
+- **개수 세기 · 위치 파악**: 동전, 나사, 구멍 같은 원형 부품 검출
+- **산업 검사**: 원형 부품의 위치와 크기 확인, 직선 가장자리 정렬 검사
+
+---
+
+## 4. 실습 내용
+
+### 4.1 공통 전처리
+
+두 코드 모두 이미지를 **가로 1200px로 줄여서** 처리합니다. 반지름과 선 길이 기준은 픽셀 단위라 해상도에 종속되기 때문입니다.
+
+### 4.2 실습 3 — 원 검출 (`03_hough_circles.py`)
+
+동전 사진에 `medianBlur`를 적용한 뒤 `param2`를 20, 30, 40, 50으로 바꿔 비교했습니다.
+
+```python
+blur = cv.medianBlur(gray, 5)
+circles = cv.HoughCircles(blur, cv.HOUGH_GRADIENT, 1, 40,
+                          param1=100, param2=param2,
+                          minRadius=30, maxRadius=75)
+```
+
+| param2 | 검출된 원 개수 | 관찰 |
+|---:|---:|---|
+| 20 | 124 | 동전 더미 위에 겹친 원이 폭증 (오검출) |
+| 30 | 61 | 여전히 겹친 원이 많음 |
+| 40 | 39 | 떨어진 동전은 대부분 검출 |
+| 50 | 20 | 오검출은 줄지만 실제 동전을 놓침 |
+
+> 개수는 결과 이미지의 중심점을 센 값입니다. 터미널에 출력된 값과 다르면 터미널 값을 우선하세요.
+
+| param2 = 20 | param2 = 30 | param2 = 40 | param2 = 50 |
+|---|---|---|---|
+| ![20](output/03_circles_param2_20_coin.png) | ![30](output/03_circles_param2_30_coin.png) | ![40](output/03_circles_param2_40_coin.png) | ![50](output/03_circles_param2_50_coin.png) |
+
+### 4.3 실습 4 — 직선 검출 (`04_hough_lines.py`)
+
+건물 사진을 `GaussianBlur` 후 Canny(100, 200)로 엣지 맵을 만들고, `HoughLinesP` 기준값을 바꿔 비교했습니다.
+
+```python
+blur = cv.GaussianBlur(gray, (5, 5), 0)
+edge = cv.Canny(blur, 100, 200)
+lines = cv.HoughLinesP(edge, 1, np.pi / 180, threshold,
+                       minLineLength=min_len, maxLineGap=10)
+```
+
+| threshold | minLineLength | 검출된 직선 수 | 관찰 |
+|---:|---:|---:|---|
+| 50 | 30 | 681 | 소나무, 로고, 글자 획에 잔선과 오검출 |
+| 80 | 60 | 186 | 건물 외곽, 창틀 위주로 정리됨 |
+| 100 | 100 | 79 | 가장 깔끔하지만 짧은 실제 선은 제외됨 |
+
+**블러 효과**: Canny 엣지 픽셀이 블러 없이 **260,123개**, 블러 적용 시 **70,554개**로 약 **72.9% 감소**했습니다. Canny 실습에서 벽돌 줄눈과 나뭇잎 엣지가 많이 남았던 원인이 블러 미적용이었다는 가설을 수치로 확인했습니다.
+
+| 블러 없음 엣지 | 블러 적용 엣지 |
+|---|---|
+| ![noblur](output/04_canny_noblur_structure_1.png) | ![blur](output/04_canny_blur_structure_1.png) |
+
+| threshold 50 / 길이 30 | threshold 80 / 길이 60 | threshold 100 / 길이 100 |
+|---|---|---|
+| ![t50](output/04_lines_t50_len30_structure_1.png) | ![t80](output/04_lines_t80_len60_structure_1.png) | ![t100](output/04_lines_t100_len100_structure_1.png) |
+
+---
+
+## 5. 결과 해석
+
+- **투표 기준값은 "오검출을 감수할지, 놓침을 감수할지"의 선택입니다.** 원 검출은 `param2`가 낮으면 후보가 폭증하고, 높으면 실제 동전을 놓칩니다. 이 사진에서는 40 부근이 균형점이었습니다.
+- **직선 검출은 기준값을 올릴수록 구조적인 선만 남습니다.** `threshold` 80~100에서 건물 외곽과 창틀이 남고 소나무와 로고의 잔선이 사라졌습니다.
+- **전처리가 결과를 좌우합니다.** 블러 하나로 엣지 픽셀이 72.9% 줄어, 같은 허프 변환이라도 입력 엣지 맵의 품질이 결과를 결정한다는 점을 확인했습니다.
+
+## 6. 한계와 다음 단계
+
+| 한계 | 원인 | 다음 시도 |
+|---|---|---|
+| 겹쳐 쌓인 동전은 어떤 값에서도 불완전 | 동전이 일부만 보여 원 전체의 테두리 투표가 부족 | 겹침이 없는 사진으로 재측정, 정확도(실제 개수 대비) 계산 |
+| 동전 크기가 제각각이라 반지름 범위(30~75px)가 넓음 | 여러 나라 동전이 섞여 있음 | 같은 종류 동전 사진으로 `minRadius`/`maxRadius` 좁히기 |
+| 원형이 아닌 동전(7각형 50p)은 높은 `param2`에서 빠짐 | 원 모델에 맞지 않음 | 윤곽선 기반 방법(`findContours` + 원형도)과 비교 |
+| 직선 기준값을 눈으로 고름 | 정량 기준 없음 | 직선을 직접 라벨링해 정밀도·재현율 비교 |
+| 개수가 검출 수일 뿐 "정답 수"와 비교하지 못함 | 정답 라벨이 없음 | 동전 개수를 세어 기준값별 오차 계산 |
+
+## 7. 실행 방법
+
+```bash
+python -m pip install opencv-python numpy
+python 03_hough_circles.py
+python 04_hough_lines.py
+```
+
+폴더 구조:
+
+```
+Open_CV/
+├─ docs/images/coin.png
+├─ docs/images/structure_1.jpg
+├─ 03_hough_circles.py
+├─ 04_hough_lines.py
+├─ output/            # 실행 결과 저장
+└─ README.md
+```
+
+## 이미지 출처
+
+- 동전 사진: Pexels 무료 이미지 (사용한 원본 페이지의 작가명과 링크를 여기에 추가하세요)
+- 건물 사진: 직접 촬영
